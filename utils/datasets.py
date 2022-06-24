@@ -520,7 +520,7 @@ class LoadImagesAndLabels(Dataset):
         if cache_images:
             gb = 0  # Gigabytes of cached images
             self.im_hw0, self.im_hw = [None] * n, [None] * n
-            fcn = self.cache_images_to_disk if cache_images == 'disk' else self.load_image
+            fcn = self.cache_images_to_disk if cache_images == 'disk' else self.load_image_with_temporal
             results = ThreadPool(NUM_THREADS).imap(fcn, range(n))
             pbar = tqdm(enumerate(results), total=n, bar_format=BAR_FORMAT, disable=LOCAL_RANK > 0)
             for i, x in pbar:
@@ -595,7 +595,7 @@ class LoadImagesAndLabels(Dataset):
 
         else:
             # Load image
-            img, (h0, w0), (h, w) = self.load_image(index)
+            img, (h0, w0), (h, w) = self.load_image_with_temporal(index)
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
@@ -671,6 +671,44 @@ class LoadImagesAndLabels(Dataset):
         else:
             return self.ims[i], self.im_hw0[i], self.im_hw[i]  # im, hw_original, hw_resized
 
+    def load_image_with_temporal(self, i):
+        # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
+        im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i],
+        if im is None:  # not cached in RAM
+            if fn.exists():  # load npy
+                im = np.load(fn)
+            else:  # read image
+                imbgr = cv2.imread(f)  # BGR
+                assert imbgr is not None, f'Image Not Found {f}'
+
+            h0, w0 = imbgr.shape[:2]  # orig hw
+            if h0 % 2 != 0 or w0 % 2 != 0:
+                h0 = h0 - h0 % 2
+                w0 = w0 - w0 % 2
+                imbgr = cv2.resize(imbgr, (w0, h0), interpolation = cv2.INTER_AREA)
+            try:
+                number = int(f.split('.')[-2].split("_")[-1])
+            except ValueError:
+                number = 1
+                pass
+            pre_f = f.replace(str(number), str(number-1))
+            if os.path.exists(pre_f):
+                previmbgr = cv2.imread(pre_f)  # BGR
+                previmbgr = cv2.resize(previmbgr, (w0, h0), interpolation = cv2.INTER_AREA)
+                imyuv = cv2.cvtColor(previmbgr, cv2.COLOR_BGR2YUV_I420)
+ 
+            else:
+                imyuv = cv2.cvtColor(imbgr, cv2.COLOR_BGR2YUV_I420)
+            im = np.concatenate((imbgr, np.expand_dims(imyuv[:h0,:w0],axis=2)), axis=2)
+            r = self.img_size / max(h0, w0)  # ratio
+            if r != 1:  # if sizes are not equal
+                im = cv2.resize(im, (int(w0 * r), int(h0 * r)),
+                                interpolation=cv2.INTER_LINEAR if (self.augment or r > 1) else cv2.INTER_AREA)
+            return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
+        else:
+            return self.ims[i], self.im_hw0[i], self.im_hw[i]  # im, hw_original, hw_resized
+
+
     def cache_images_to_disk(self, i):
         # Saves an image as an *.npy file for faster loading
         f = self.npy_files[i]
@@ -686,7 +724,8 @@ class LoadImagesAndLabels(Dataset):
         random.shuffle(indices)
         for i, index in enumerate(indices):
             # Load image
-            img, _, (h, w) = self.load_image(index)
+            # img, _, (h, w) = self.load_image(index)
+            img, _, (h, w) = self.load_image_with_temporal(index)
 
             # place img in img4
             if i == 0:  # top left
@@ -744,7 +783,7 @@ class LoadImagesAndLabels(Dataset):
         hp, wp = -1, -1  # height, width previous
         for i, index in enumerate(indices):
             # Load image
-            img, _, (h, w) = self.load_image(index)
+            img, _, (h, w) = self.load_image_with_temporal(index)
 
             # place img in img9
             if i == 0:  # center
