@@ -465,6 +465,11 @@ class LoadImagesAndLabels(Dataset):
         # Read cache
         [cache.pop(k) for k in ('hash', 'version', 'msgs')]  # remove items
         labels, shapes, self.segments = zip(*cache.values())
+        # labels = np.array(labels).reshape(-1,5)
+        # print(labels.shape)
+        # labels = labels[labels[:, 0] != 3]
+        # labels[labels[:, 0] == 2] = 1 #yifeiliu: change movie to image
+        # labels = labels.reshape(-1)
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
         self.im_files = list(cache.keys())  # update
@@ -489,6 +494,10 @@ class LoadImagesAndLabels(Dataset):
                 self.labels[i][:, 0] = 0
                 if segment:
                     self.segments[i][:, 0] = 0
+            # self.labels[i][self.labels[i][:, 0] == 2] = 1
+            # self.labels[i][self.labels[i][:, 0] == 3] = 2 
+            # if self.labels[i][:, 0] == 2 or self.labels[i][:, 0] == 3:
+            #     self.labels[i][:, 0] = 1
 
         # Rectangular Training
         if self.rect:
@@ -521,6 +530,8 @@ class LoadImagesAndLabels(Dataset):
             gb = 0  # Gigabytes of cached images
             self.im_hw0, self.im_hw = [None] * n, [None] * n
             fcn = self.cache_images_to_disk if cache_images == 'disk' else self.load_image_with_temporal
+            # fcn = self.cache_images_to_disk if cache_images == 'disk' else self.load_image
+
             results = ThreadPool(NUM_THREADS).imap(fcn, range(n))
             pbar = tqdm(enumerate(results), total=n, bar_format=BAR_FORMAT, disable=LOCAL_RANK > 0)
             for i, x in pbar:
@@ -596,6 +607,7 @@ class LoadImagesAndLabels(Dataset):
         else:
             # Load image
             img, (h0, w0), (h, w) = self.load_image_with_temporal(index)
+            # img, (h0, w0), (h, w) = self.load_image(index)
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
@@ -686,20 +698,27 @@ class LoadImagesAndLabels(Dataset):
                 h0 = h0 - h0 % 2
                 w0 = w0 - w0 % 2
                 imbgr = cv2.resize(imbgr, (w0, h0), interpolation = cv2.INTER_AREA)
+            imyuv = cv2.cvtColor(imbgr, cv2.COLOR_BGR2YUV_I420)
+            im = np.expand_dims(imyuv[:h0,:w0],axis=2)
             try:
                 number = int(f.split('.')[-2].split("_")[-1])
             except ValueError:
-                number = 1
+                number = 0
                 pass
-            pre_f = f.replace(str(number), str(number-1))
-            if os.path.exists(pre_f):
-                previmbgr = cv2.imread(pre_f)  # BGR
-                previmbgr = cv2.resize(previmbgr, (w0, h0), interpolation = cv2.INTER_AREA)
-                imyuv = cv2.cvtColor(previmbgr, cv2.COLOR_BGR2YUV_I420)
- 
-            else:
-                imyuv = cv2.cvtColor(imbgr, cv2.COLOR_BGR2YUV_I420)
-            im = np.concatenate((imbgr, np.expand_dims(imyuv[:h0,:w0],axis=2)), axis=2)
+            for i in range(2):
+                pre_f = f.replace(str(number), str(number-1))
+                if os.path.exists(pre_f):
+                    previmbgr = cv2.imread(pre_f)  # BGR
+                    previmbgr = cv2.resize(previmbgr, (w0, h0), interpolation = cv2.INTER_AREA)
+                    previmyuv = cv2.cvtColor(previmbgr, cv2.COLOR_BGR2YUV_I420)
+                    previmyuv = np.expand_dims(previmyuv[:h0,:w0],axis=2)
+                else:
+                    previmyuv = np.expand_dims(im[:,:,i],axis=2)
+                im = np.concatenate((im, previmyuv), axis=2)
+                f = pre_f
+                number = max(number - 1,0)
+            # print(im.shape)
+
             r = self.img_size / max(h0, w0)  # ratio
             if r != 1:  # if sizes are not equal
                 im = cv2.resize(im, (int(w0 * r), int(h0 * r)),
@@ -725,7 +744,7 @@ class LoadImagesAndLabels(Dataset):
         for i, index in enumerate(indices):
             # Load image
             # img, _, (h, w) = self.load_image(index)
-            img, _, (h, w) = self.load_image_with_temporal(index)
+            img, _, (h, w) = self.load_image_with_temporal(index)            
 
             # place img in img4
             if i == 0:  # top left
@@ -784,6 +803,7 @@ class LoadImagesAndLabels(Dataset):
         for i, index in enumerate(indices):
             # Load image
             img, _, (h, w) = self.load_image_with_temporal(index)
+            # img, _, (h, w) = self.load_image(index)
 
             # place img in img9
             if i == 0:  # center
