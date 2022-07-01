@@ -63,7 +63,10 @@ def train():
     logger = GenericLogger(opt=opt, console_logger=LOGGER)
     # Download Dataset
     data_dir = FILE.parents[1] / 'datasets' / data
+    # data_dir = opt.data
     if not data_dir.is_dir():
+        print(f"{data_dir} is not valid! Please check the path")
+        exit()
         url = f'https://github.com/ultralytics/yolov5/releases/download/v1.0/{data}.zip'
         download(url, dir=data_dir.parent)
 

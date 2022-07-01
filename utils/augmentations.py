@@ -14,9 +14,12 @@ import torchvision.transforms.functional as TF
 from utils.general import LOGGER, check_version, colorstr, resample_segments, segment2box
 from utils.metrics import bbox_ioa
 
-IMAGENET_MEAN = 0.485, 0.456, 0.406  # RGB mean
-IMAGENET_STD = 0.229, 0.224, 0.225  # RGB standard deviation
+# IMAGENET_MEAN = 0.485, 0.456, 0.406  # RGB mean
+# IMAGENET_STD = 0.229, 0.224, 0.225  # RGB standard deviation
 
+
+IMAGENET_MEAN = 0, 0, 0  # RGB mean
+IMAGENET_STD = 1, 1, 1  # RGB standard deviation
 
 class Albumentations:
     # YOLOv5 Albumentations class (optional, only used if package is installed)
@@ -315,7 +318,7 @@ def classify_albumentations(augment=True,
         import albumentations as A
         from albumentations.pytorch import ToTensorV2
         check_version(A.__version__, '1.0.3', hard=True)  # version requirement
-        if augment:  # Resize and crop
+        if augment or 1:  # Resize and crop
             T = [A.RandomResizedCrop(height=size, width=size, scale=scale)]
             if auto_aug:
                 # TODO: implement AugMix, AutoAug & RandAug in albumentation
@@ -328,9 +331,9 @@ def classify_albumentations(augment=True,
                 if jitter > 0:
                     color_jitter = (float(jitter),) * 3  # repeat value for brightness, contrast, satuaration, 0 hue
                     T += [A.ColorJitter(*color_jitter, 0)]
-        else:  # Use fixed crop for eval set (reproducibility)
-            T = [A.SmallestMaxSize(max_size=size), A.CenterCrop(height=size, width=size)]
-        T += [A.Normalize(mean=mean, std=std), ToTensorV2()]  # Normalize and convert to Tensor
+        # else:  # Use fixed crop for eval set (reproducibility)
+        #     T = [A.SmallestMaxSize(max_size=size), A.CenterCrop(height=size, width=size)]
+        T += [A.augmentations.geometric.resize.Resize(height=size, width=size), A.Normalize(mean=mean, std=std), ToTensorV2()]  # Normalize and convert to Tensor
 
         LOGGER.info(colorstr('albumentations: ') + ', '.join(f'{x}' for x in T if x.p))
         return A.Compose(T)
@@ -341,6 +344,6 @@ def classify_albumentations(augment=True,
         LOGGER.info(colorstr('albumentations: ') + f'{e}')
 
 
-def classify_transforms():
+def classify_transforms(size):
     # Transforms to apply if albumentations not installed
-    return T.Compose([T.ToTensor(), T.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
+    return T.Compose([T.Resize((size,size)),T.ToTensor(), T.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
