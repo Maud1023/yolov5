@@ -712,6 +712,13 @@ class LoadImagesAndLabels(Dataset):
                     previmbgr = cv2.resize(previmbgr, (w0, h0), interpolation = cv2.INTER_AREA)
                     previmyuv = cv2.cvtColor(previmbgr, cv2.COLOR_BGR2YUV_I420)
                     previmyuv = np.expand_dims(previmyuv[:h0,:w0],axis=2)
+                elif os.path.exists(f.replace(str(number), str(number+1))):
+                    pre_f = f.replace(str(number), str(number+1))
+                    previmbgr = cv2.imread(pre_f)  # BGR
+                    previmbgr = cv2.resize(previmbgr, (w0, h0), interpolation = cv2.INTER_AREA)
+                    previmyuv = cv2.cvtColor(previmbgr, cv2.COLOR_BGR2YUV_I420)
+                    previmyuv = np.expand_dims(previmyuv[:h0,:w0],axis=2)
+                    number = number + 3
                 else:
                     previmyuv = np.expand_dims(im[:,:,i],axis=2)
                 im = np.concatenate((im, previmyuv), axis=2)
